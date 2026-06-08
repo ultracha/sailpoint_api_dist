@@ -1,0 +1,471 @@
+openapi: 3.0.0
+info:
+  title: SailPoint ISC 연동 API (Target System)
+  description: |
+    SailPoint Identity Security Cloud(ISC)와의 연동을 위해 타겟 시스템에서 구현해야 하는 표준 REST API 명세서입니다.
+    이 API는 계정 생애주기 관리(JML), 권한 집계 및 프로비저닝을 지원합니다.
+  version: 1.0.0
+
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: /oauth/token
+          scopes:
+            read: 계정 및 권한 조회 권한
+            write: 계정 및 권한 수정/삭제 권한
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT (or PAT)
+      description: "/oauth/token의 응답의 accesstoken"
+
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    BadRequest:
+      description: Bad Request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { message: "Invalid input", error: true }
+    NotFound:
+      description: Not Found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { message: "Not found", error: true }
+    ServerError:
+      description: Server Error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { message: "Internal server error", error: true }
+  schemas:
+    AuthTokenResponse:
+        type: object
+        properties:
+          message: 
+            type: string
+            example: "Token issued successfully"
+          accessToken: 
+            type: string
+            example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          refreshToken: 
+            type: string
+            example: "d1f2e3c4b5a6978877665544332211aaabbccdd..."
+          refreshExpiresAt: 
+            type: string
+            format: date-time
+            example: "2024-10-19T20:30:00Z"
+    Account:
+        type: object
+        required: [id, accountName, empNumber, phoneNumber, accountStatus, email]
+        properties:
+          id:
+            type: string
+            description: "[필수] 계정 고유 ID (nativeIdentity)"
+            example: "p12345"
+          accountName:
+            type: string
+            description: "[필수] 로그인 ID (accountName)"
+            example: "user1234"
+          empNumber:
+            type: string
+            description: "[필수] 사원번호 (Correlation 키 - 사원 시스템)"
+            example: "emp12345"
+          phoneNumber:
+            type: string
+            description: "[필수] 휴대폰 번호 (Correlation 키 - 전화번호 기반 시스템)"
+            example: "010-1234-5678"
+          accountStatus:
+            type: string
+            description: "[필수] 계정 상태 (ACTIVE/DISABLED/LOCKED)"
+            example: "ACTIVE"
+          email:
+            type: string
+            format: email
+            description: "[필수] 이메일"
+            example: "gdhong@company.com"
+          displayName:
+            type: string
+            description: "[권장/선택] 성명"
+            example: "홍길동"
+          deptCode:
+            type: string
+            description: "[권장/선택] 부서 코드"
+            example: "IT"
+          createDate:
+            type: string
+            format: date-time
+            description: "[권장/선택] 계정 생성일"
+          lastLoginDate:
+            type: string
+            format: date-time
+            description: "[권장/선택] 마지막 로그인"
+          lastModifyedDate:
+            type: string
+            format: date-time
+            description: "[DeltaAggregation 필수] 최종 변경일시 (Delta 기준)"
+          isDeleted:
+            type: boolean
+            description: "[DeltaAggregation 필수] 삭제 여부"
+            example: false
+          entitlements:
+            type: array
+            items:
+              type: string
+            description: "현재 할당된 권한 ID 목록"
+            example: ["GROUP_IT_ADMIN", "ROLE_DEVELOPER"]
+
+    AccountCreateRequest:
+      type: object
+      required: [id, accountName, empNumber, phoneNumber, accountStatus, email]
+      properties:
+        id:
+          type: string
+          description: "사번 또는 고유 ID"
+        accountName:
+          type: string
+          description: "로그인 ID"
+        empNumber:
+          type: string
+          description: "사원번호 (Correlation 키 - 사원 시스템)"
+        phoneNumber:
+          type: string
+          description: "휴대폰 번호 (Correlation 키 - 전화번호 기반 시스템)"
+        accountStatus:
+          type: string
+          description: "계정 상태 (ACTIVE/DISABLED/LOCKED)"
+          example: "ACTIVE"
+        email:
+          type: string
+          format: email
+
+    PaginatedAccountResponse:
+        type: object
+        properties:
+          totalItems:
+            type: integer
+            description: "조건에 맞는 전체 데이터 건수"
+            example: 150
+          totalPages:
+            type: integer
+            description: "전체 페이지 수"
+            example: 2
+          currentPage:
+            type: integer
+            description: "현재 페이지 번호"
+            example: 1          
+          items:
+            type: array
+            description: "실제 계정 데이터 목록"
+            items:
+              $ref: '#/components/schemas/Account'
+
+    Entitlement:
+      type: object
+      required: [id, code, name]
+      properties:
+        id:
+          type: string
+          description: "[필수] 권한 고유 ID"
+          example: "ROLE-001"
+        code:
+          type: string
+          description: "[필수] 권한 코드"
+          example: "ROLE_IT_ADMIN"
+        name:
+          type: string
+          description: "[필수] 권한명 (displayName)"
+          example: "IT 인프라 관리자 그룹"
+        type:
+          type: string
+          description: "[권장/선택] 권한 유형 ROLE / GROUP / PERMISSION"
+          example: "GROUP"
+        description:
+          type: string
+          description: "[권장/선택] 권한 설명"
+          example: "IT 인프라 자원에 대한 모든 접근 권한"
+        lastModifyedDate:
+          type: string
+          format: date-time
+          description: "[DeltaAggregation 필수] 최종 변경일시 (Delta 기준)"
+        isDeleted:
+          type: boolean
+          description: "[DeltaAggregation 필수] 삭제 여부"
+          example: false
+
+    PaginatedEntitlementResponse:
+        type: object
+        properties:
+          totalItems:
+            type: integer
+            description: "조건에 맞는 전체 데이터 건수"
+            example: 150
+          totalPages:
+            type: integer
+            description: "전체 페이지 수"
+            example: 2
+          currentPage:
+            type: integer
+            description: "현재 페이지 번호"
+            example: 1          
+          items:
+            type: array
+            description: "실제 권한 목록"
+            items:
+              $ref: '#/components/schemas/Entitlement'
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      example:
+        code: "INVALID_REQUEST"
+        message: "필수 파라미터가 누락되었습니다."
+
+security:
+  - OAuth2: []
+  - BearerAuth: []
+
+paths:  
+  /oauth/token:
+    post:
+      summary: OAuth 2.0 토큰 발급
+      tags: [Authentication]
+      description: |
+        client_id와 client_secret을 사용하여 Access Token을 발급받습니다. 
+        
+        [OAuth2.0 토큰 발급 불가 시]
+        
+        API Key를 설정하여 각 API 호출 시 헤더에 넣는 것으로 대체
+
+        * ex) X-API-KEY: static-api-key
+      
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                grant_type:
+                  type: string
+                  default: client_credentials
+                client_id:
+                  type: string
+                client_secret:
+                  type: string
+      responses:
+        '200':
+          description: 토큰 발급 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokenResponse'
+        '500': { $ref: '#/components/responses/ServerError' }
+  
+  /accounts:
+    get:
+      summary: 계정 목록 조회 (Aggregation)
+      tags: [Accounts]
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: modifiedSince
+          in: query
+          description: "델타 집계용: 특정 시점 이후 변경된 계정만 조회 (ISO 8601) ex) 2024-10-18T20:30:00Z"
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: 계정 목록 반환 성공
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PaginatedAccountResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+    post:
+      summary: 계정 생성 (Create)
+      tags: [Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountCreateRequest'
+      responses:
+        '201':
+          description: 계정 생성 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountCreateRequest'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /accounts/{accountId}:
+    get:
+      summary: 단일 계정 상세 조회 (Lookup)
+      tags: [Accounts]
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema:                
+                items:
+                  $ref: '#/components/schemas/Account'
+              
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+    post:
+      summary: 계정 수정 / 상태 변경 / 계정 삭제
+      tags: [Accounts]
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+      description: |
+        REST 표준(PATCH/DELETE) 대신 방화벽 제약을 고려하여 POST로 통합된 엔드포인트입니다.        
+        - 상태 변경: disabled 포함
+        - 계정 삭제: action: "delete" 포함
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:                
+                isDisabled:
+                  type: boolean
+                  description: "true: 비활성화 처리, false: 활성화(잠금 해제 등) 처리"
+                isDeleted:
+                  type: boolean                  
+                  description: "true 시  해당 계정 영구 삭제 처리"
+            example:              
+              isDisabled: true
+              isDeleted: false
+      responses:
+        '200':
+          description: 수정 성공
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /entitlements:
+    get:
+      summary: 권한 목록 조회 (Entitlement Aggregation)
+      tags: [Entitlements]
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: size
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 권한 리스트 반환
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PaginatedEntitlementResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /accounts/{accountId}/entitlements:
+    post:
+      summary: 특정 계정에 권한 부여
+      tags: [Entitlements]
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                entitlementId:
+                  type: string
+      responses:
+        '200':
+          description: 권한 부여 성공
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /accounts/{accountId}/entitlements/{entitlementId}:
+    post:
+      summary: 특정 계정의 권한 회수
+      tags: [Entitlements]
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: entitlementId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 권한 회수 성공
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
